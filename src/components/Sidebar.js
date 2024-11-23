@@ -1,7 +1,7 @@
 import React from 'react';
 
 function Sidebar({ selectedItem, onSelectItem }) {
-  const items = ['All files', 'Shared with me', 'Starred', 'Trash'];
+  const items = ['All files', 'Logs'];
 
   return (
     <div className="w-64 bg-gray-200 p-4 flex flex-col">

@@ -8,19 +8,20 @@ services:
       POSTGRES_PASSWORD: password
       POSTGRES_DB: mydatabase
     volumes:
-      - ./db_data:/var/lib/postgresql/data
+      - ./db_data:/var/lib/postgresql/data  # Maps local db_data folder to the container's PostgreSQL data folder
     ports:
-      - "5432:5432"
-
+      - "5432:5432"  # Exposes the database on port 5432
+  
   web:
     build: .
     environment:
       - FLASK_APP=app.main
       - FLASK_ENV=development
     ports:
-      - "5001:5000"
+      - "5001:5000"  # Exposes Flask app on port 5001
     depends_on:
-      - db
+      - db  # Ensures web service waits for the db service to be ready
     volumes:
-      - .:/app
-    command: flask run --host=0.0.0.0
+      - .:/app  # Mounts the current directory to /app in the container
+      - ./files:/app/files  # Mounts the ./files directory on the host to /app/files in the container for file storage
+    command: flask run --host=0.0.0.0  # Runs Flask on host 0.0.0.0 to be accessible outside the container
