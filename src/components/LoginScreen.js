@@ -16,10 +16,16 @@ function LoginScreen({ onLogin }) {
       // Make an API request to the backend to authenticate the user
       const response = await axios.post('http://localhost:5001/login', { email, password });
 
-      // If successful, call onLogin (you can save token or session here)
+      // If successful, save user_id to localStorage
+      const userId = response.data.user_id;  // Assuming backend response has user_id
+      localStorage.setItem('user_id', userId);
+
+      // Call onLogin (you can save token or session here if needed)
       onLogin();
-      setErrorMessage(''); // Clear any previous error message
-      console.log(response.data.message); // You can also display the success message
+
+      // Clear error message if login is successful
+      setErrorMessage('');
+      console.log('Login successful', response.data.message); // You can also display the success message
     } catch (error) {
       // Handle errors (like incorrect email/password)
       if (error.response) {
@@ -42,10 +48,12 @@ function LoginScreen({ onLogin }) {
       // Make an API request to the backend to register the user
       const response = await axios.post('http://localhost:5001/add_user', { username: name, email, password });
 
-      // Show a success message or redirect to login screen
-      setErrorMessage(''); // Clear any previous error message
-      console.log(response.data.message); // You can also display the success message
-      setIsRegistering(false); // Switch back to login view
+      // Clear error message and show success message
+      setErrorMessage('');
+      console.log('Registration successful', response.data.message); // You can also display the success message
+
+      // Switch back to login view
+      setIsRegistering(false);
     } catch (error) {
       // Handle errors (like email already in use)
       if (error.response) {

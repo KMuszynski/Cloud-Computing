@@ -1,9 +1,9 @@
-// src/components/Upload.js
 import React, { useState } from 'react';
 
 function Upload() {
   const [dragging, setDragging] = useState(false); // Track dragging state
   const [files, setFiles] = useState([]); // Store selected files
+  const [uploadStatus, setUploadStatus] = useState(''); // Track upload status
 
   // Handle when files are dragged over the drop zone
   const handleDragOver = (event) => {
@@ -45,6 +45,43 @@ function Upload() {
     ]);
   };
 
+  // Handle file upload to backend
+  const handleUpload = async () => {
+    if (files.length === 0) {
+      setUploadStatus('No files to upload.');
+      return;
+    }
+
+    const userId = localStorage.getItem('user_id'); // Get user_id from localStorage
+    if (!userId) {
+      setUploadStatus('User not logged in.');
+      return;
+    }
+
+    const formData = new FormData();
+    files.forEach((file) => formData.append('file', file)); // Append files to FormData
+
+    try {
+      const response = await fetch('http://localhost:5001/upload', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'user_id': userId, // Use the user_id from localStorage
+        },
+      });
+
+      if (response.ok) {
+        setUploadStatus('Files uploaded successfully!');
+        setFiles([]); // Clear files after successful upload
+      } else {
+        const errorData = await response.json();
+        setUploadStatus(`Upload failed: ${errorData.error}`);
+      }
+    } catch (error) {
+      setUploadStatus(`Upload failed: ${error.message}`);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100">
       <h2 className="text-2xl font-bold mb-4">Upload Files</h2>
@@ -81,6 +118,13 @@ function Upload() {
           </ul>
         </div>
       )}
+      <button
+        onClick={handleUpload}
+        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+      >
+        Upload Files
+      </button>
+      {uploadStatus && <p className="mt-2 text-sm">{uploadStatus}</p>}
     </div>
   );
 }
