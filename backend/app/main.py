@@ -243,6 +243,7 @@ BASE_UPLOAD_FOLDER = '/app/files'  # Directory inside the Docker container
 # Ensure the uploads directory exists (this path exists in the container, not the host machine)
 os.makedirs(BASE_UPLOAD_FOLDER, exist_ok=True)
 
+# Route to upload file
 @app.route('/upload', methods=['POST'])
 @cross_origin(origins=["http://localhost:3000", "http://localhost:5000", "http://localhost:5001"])
 def upload_file():
@@ -282,11 +283,14 @@ def upload_file():
     db.session.add(new_file)
     db.session.commit()
 
-    # Log the upload action
-    log_file_action(action='file_uploaded', user_id=user.id, file_id=new_file.id, file_size=len(file.read()))
+    # Log the upload action with the file size
+    file_size = os.path.getsize(absolute_filepath)  # Get file size in bytes
+    log_file_action(action='file_uploaded', user_id=user.id, file_id=new_file.id, file_size=file_size, file_version=1)
 
     return jsonify({"message": f"File {unique_filename} uploaded successfully for user {user.username}!"}), 201
 
+
+# Route to delete file
 @app.route('/delete_file/<int:file_id>', methods=['DELETE'])
 def delete_file(file_id):
     user_id = request.headers.get('user_id')  # Get the user ID from the headers
@@ -308,8 +312,9 @@ def delete_file(file_id):
             print(f"Error: Unauthorized access attempt by user {user_id} for file {file_id}")
             return jsonify({"error": "Unauthorized"}), 403
 
-        # Log the delete action before deleting the file
-        log_file_action(action='file_deleted', user_id=int(user_id), file_id=file.id)
+        # Log the delete action with the file size before deleting
+        file_size = os.path.getsize(file.filepath) if os.path.exists(file.filepath) else 0
+        log_file_action(action='file_deleted', user_id=int(user_id), file_id=file.id, file_size=file_size, file_version=1)
 
         # Attempt to delete the file from the filesystem
         if os.path.exists(file.filepath):
@@ -330,7 +335,6 @@ def delete_file(file_id):
         # Log the exception details for debugging
         print(f"Error in delete_file: {str(e)}")
         return jsonify({"error": f"Error deleting file: {str(e)}"}), 500
-
 
 
 
@@ -402,6 +406,7 @@ def get_files():
     return jsonify(files_data), 200
 
 
+# Route to download file
 @app.route('/download_file/<int:file_id>', methods=['GET'])
 def download_file(file_id):
     # Retrieve the user_id from the request headers
@@ -417,6 +422,10 @@ def download_file(file_id):
     if not os.path.exists(file.filepath):
         return jsonify({"error": "File does not exist on the server"}), 404
 
+    # Log the download action with the file size
+    file_size = os.path.getsize(file.filepath)  # Get the file size
+    log_file_action(action='file_downloaded', user_id=int(user_id), file_id=file.id, file_size=file_size, file_version=1)
+
     # Use mimetypes to set the MIME type based on the file extension
     mime_type, _ = mimetypes.guess_type(file.filename)
     mime_type = mime_type or 'application/octet-stream'  # Default to binary if MIME type can't be guessed
@@ -431,9 +440,6 @@ def download_file(file_id):
         download_name=secure_name,  # Correctly set filename here
         mimetype=mime_type
     )
-
-    # Log the download action
-    log_file_action(action='file_downloaded', user_id=int(user_id), file_id=file.id)
 
     # Add custom header with the filename for the frontend to use
     response.headers['X-File-Name'] = secure_name

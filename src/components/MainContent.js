@@ -177,18 +177,21 @@ function MainContent({ selectedItem }) {
                 <div>No logs available</div>
               ) : (
                 logs.slice()  // Make a copy of the logs array to avoid mutating the original
-                .reverse() // Reverse the order of the logs array
-                .map((log) => (
-                  <div key={log.id} className="flex flex-col items-start p-4 border rounded-md">
-                    <div><strong>Action:</strong> {log.action}</div>
-                    <div><strong>Timestamp:</strong> {new Date(log.timestamp).toLocaleString()}</div>
-                    <div><strong>User ID:</strong> {log.user_id}</div>
-                    <div><strong>Username:</strong> {log.username}</div> {/* Display username */}
-                    <div><strong>Email:</strong> {log.email}</div>         {/* Display email */}
-                    {log.file_id && <div><strong>File ID:</strong> {log.file_id}</div>}
-                    {log.file_size && <div><strong>File Size:</strong> {log.file_size} bytes</div>}
-                  </div>
-                ))              
+  .reverse() // Reverse the order of the logs array
+  .map((log) => (
+    <div key={log.id} className="flex flex-col items-start p-4 border rounded-md">
+      <div><strong>Action:</strong> {log.action}</div>
+      <div><strong>Timestamp:</strong> {new Date(log.timestamp).toLocaleString()}</div>
+      <div><strong>User ID:</strong> {log.user_id}</div>
+      <div><strong>Username:</strong> {log.username}</div> {/* Display username */}
+      <div><strong>Email:</strong> {log.email}</div>         {/* Display email */}
+      {log.file_id && <div><strong>File ID:</strong> {log.file_id}</div>}
+      {log.file_size && <div><strong>File Size:</strong> {log.file_size} bytes</div>}
+      {log.file_version && <div><strong>File Version:</strong> {log.file_version}</div>} {/* Display file version if available */}
+      {log.file_size && <div><strong>File Size:</strong> {log.file_size} bytes</div>} {/* Display file size if available */}
+    </div>
+  ))
+             
               )}
             </div>
           </div>
