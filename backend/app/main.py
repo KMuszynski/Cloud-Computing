@@ -7,13 +7,21 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from flask_migrate import Migrate
 import mimetypes
 from datetime import datetime
+from flask_cors import CORS
+from flask_cors import cross_origin
+
+
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@db:5432/mydatabase'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Enable CORS for all domains (or restrict to specific domains later)
-CORS(app, origins="http://localhost:3000")  # Allow requests only from your React app
+# Enable CORS for specific domains (you can add more domains as needed)
+CORS(app, origins=["http://localhost:3000", "http://localhost:5000", "http://localhost:5001"])
+
+
 
 # Set up database URI to connect to the PostgreSQL container
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@db:5432/mydatabase'
@@ -21,6 +29,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 migrate = Migrate(app, db)
+
 
 # Define the User model (table structure)
 class User(db.Model):
@@ -102,10 +111,30 @@ def log_file_action(action, user_id, file_id=None, file_version=None, file_size=
     db.session.add(log)
     db.session.commit()
 
+def log_user_action(action, user_id):
+    """Function to log user actions like login and logout."""
+    try:
+        # Log the user action (e.g., login/logout)
+        log_entry = Log(
+            action=action, 
+            user_id=user_id, 
+            timestamp=datetime.datetime.utcnow(),
+            file_id=None,  # Explicitly set to None for user actions
+            file_version=None,
+            file_size=None
+        )
+        db.session.add(log_entry)
+        db.session.commit()
+        print(f"User action logged: {action} by user {user_id}")
+    except Exception as e:
+        print(f"Error logging user action: {str(e)}")
+
+
 
 
 # Route to log in a user (Authentication)
 @app.route('/login', methods=['POST'])
+@cross_origin(origins=["http://localhost:3000", "http://localhost:5000", "http://localhost:5001"])
 def login():
     # Get the data from the request
     data = request.get_json()
@@ -120,15 +149,55 @@ def login():
     # Query the user from the database based on the email
     user = User.query.filter_by(email=email).first()
 
-    if user and check_password_hash(user.hashed_password, password):
-        # Successful login
-        return jsonify({
-            "message": f"Welcome, {user.username}!",
-            "user_id": user.id  # Include the user_id in the response
-        }), 200
+    if user:
+        print(f"User found: {user.username}, password hash: {user.hashed_password}")
+        # Check password hash
+        if check_password_hash(user.hashed_password, password):
+            log_file_action(action='user_logged_in', user_id=user.id)
+            return jsonify({
+                "message": f"Welcome, {user.username}!",
+                "user_id": user.id
+            }), 200
+        else:
+            print("Password does not match")
+            return jsonify({"error": "Invalid email or password"}), 401
     else:
-        # Invalid credentials
+        print("User not found")
         return jsonify({"error": "Invalid email or password"}), 401
+
+
+@app.route('/logout', methods=['POST'])
+@cross_origin(origins=["http://localhost:3000", "http://localhost:5000", "http://localhost:5001"])
+def logout():
+    user_id = request.headers.get('user_id')
+    if not user_id:
+        return jsonify({"error": "User ID not provided"}), 400
+
+    # Fetch the user object using the user_id
+    user = User.query.get(user_id)  # Assuming SQLAlchemy, adapt for your ORM
+
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    # Now that you have the user object, you can safely log the action
+    log_file_action(action='user_logged_out', user_id=user.id)
+
+    # Return a success message
+    return jsonify({"message": "User logged out successfully"}), 200
+
+
+
+
+
+@app.route('/update_profile', methods=['POST'])
+def update_profile():
+    user_id = request.json.get('user_id')
+    
+    if user_id:
+        log_file_action(action='user_updated_profile', user_id=user_id)
+        return jsonify({"message": "Profile updated successfully"}), 200
+    else:
+        return jsonify({"error": "Invalid user session"}), 400
 
 
 # Route to add a new user to the database
@@ -159,8 +228,15 @@ def add_user():
     db.session.add(new_user)
     db.session.commit()
 
+    # Log the action
+    log_file_action(action='user_account_added', user_id=new_user.id)
+
     # Return a success message
-    return jsonify({"message": f"User {username} added successfully!"}), 201
+    return jsonify({
+        "message": f"Welcome, {new_user.username}!",
+        "user_id": new_user.id
+    }), 201
+
 
 BASE_UPLOAD_FOLDER = '/app/files'  # Directory inside the Docker container
 
@@ -168,6 +244,7 @@ BASE_UPLOAD_FOLDER = '/app/files'  # Directory inside the Docker container
 os.makedirs(BASE_UPLOAD_FOLDER, exist_ok=True)
 
 @app.route('/upload', methods=['POST'])
+@cross_origin(origins=["http://localhost:3000", "http://localhost:5000", "http://localhost:5001"])
 def upload_file():
     if 'file' not in request.files:
         return jsonify({"error": "No file provided"}), 400
@@ -259,6 +336,7 @@ def delete_file(file_id):
 
 
 @app.route('/get_logs', methods=['GET'])
+@cross_origin(origins=["http://localhost:3000", "http://localhost:5000", "http://localhost:5001"])
 def get_logs():
     # Admin check (this could be improved by having proper roles/permissions)
     user_id = request.headers.get('user_id')
@@ -271,18 +349,37 @@ def get_logs():
     logs = Log.query.join(User, Log.user_id == User.id).all()
 
     # Format the logs data with user information
-    logs_data = [{
-        "id": log.id,
-        "action": log.action,
-        "timestamp": log.timestamp,
-        "user_id": log.user_id,
-        "file_id": log.file_id,
-        "file_version": log.file_version,
-        "username": log.user.username,  # Assuming 'User' model has a 'username' field
-        "email": log.user.email        # Assuming 'User' model has an 'email' field
-    } for log in logs]
+    logs_data = []
+
+    for log in logs:
+        # For login/logoff actions, there won't be file-related fields
+        if log.action in ['user_logged_in', 'user_logged_out']:
+            log_data = {
+                "id": log.id,
+                "action": log.action,
+                "timestamp": log.timestamp,
+                "user_id": log.user_id,
+                "username": log.user.username,  # Assuming 'User' model has a 'username' field
+                "email": log.user.email         # Assuming 'User' model has an 'email' field
+            }
+        else:
+            # For file-related actions, include file information if available
+            log_data = {
+                "id": log.id,
+                "action": log.action,
+                "timestamp": log.timestamp,
+                "user_id": log.user_id,
+                "file_id": log.file_id,
+                "file_version": log.file_version,
+                "file_size": log.file_size,
+                "username": log.user.username,  # Assuming 'User' model has a 'username' field
+                "email": log.user.email         # Assuming 'User' model has an 'email' field
+            }
+
+        logs_data.append(log_data)
 
     return jsonify(logs_data), 200
+
 
 
 @app.route('/get_files', methods=['GET'])

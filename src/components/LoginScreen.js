@@ -19,6 +19,7 @@ function LoginScreen({ onLogin }) {
       // If successful, save user_id to localStorage
       const userId = response.data.user_id;  // Assuming backend response has user_id
       localStorage.setItem('user_id', userId);
+      //localStorage.setItem('user_id', response.user_id);
 
       // Call onLogin (you can save token or session here if needed)
       onLogin();

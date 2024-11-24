@@ -1,4 +1,3 @@
-// src/App.js
 import React, { useState } from 'react';
 import './App.css';
 import Header from './components/Header';
@@ -7,6 +6,7 @@ import MainContent from './components/MainContent';
 import LoginScreen from './components/LoginScreen';
 import Options from './components/Options';
 import Upload from './components/Upload'; // Import the Upload component
+import axios from 'axios';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -15,15 +15,42 @@ function App() {
   const [selectedItem, setSelectedItem] = useState('All files');
   const [showUpload, setShowUpload] = useState(false); // State for upload screen
 
-  const handleLogin = () => {
+  // Handle login
+  const handleLogin = (userId) => {
+    //localStorage.setItem('user_id', userId);
     setIsLoggedIn(true);
   };
+  
+  
+  //App.js
+  // Handle logout and pass the userId to the Options component
+  const handleLogout = async () => {
+    const storedUserId = localStorage.getItem('user_id');
+    if (!storedUserId) {
+      console.error('No user ID found in localStorage');
+      return;
+    }
+    
+    // Call the API to log the user out
+    try {
+      const response = await axios.post('http://localhost:5001/logout', {}, {
+        headers: {
+          'user_id': storedUserId,  // Pass user_id in headers
+          'Content-Type': 'application/json',
+        }
+      });
 
-  const handleLogout = () => {
-    setIsLoggedIn(false);
-    setShowOptions(false);
-    setSelectedItem('All files'); // Reset selected item on logout
+      if (response.status === 200) {
+        console.log('Logout successful:', response.data.message);
+        localStorage.removeItem('user_id'); // Clear user ID from localStorage
+        setIsLoggedIn(false); // Update state to reflect user is logged out
+      }
+    } catch (error) {
+      console.error('Error logging out:', error);
+    }
   };
+  
+  
 
   const handleHome = () => {
     setShowSidebar((prev) => !prev);
