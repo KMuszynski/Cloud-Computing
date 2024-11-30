@@ -27,8 +27,14 @@ function MainContent({ selectedItem }) {
 			// List files in the user's folder
 			const { data, error } = await supabase.storage
 				.from("Files") // Replace with your bucket name
-				.list(user.id, { limit: 100 }); // List files in the user's directory
-
+				.list(user.user.id, {
+					limit: 100,
+					offset: 0,
+					sortBy: {
+						column: "name",
+						order: "asc",
+					},
+				}); // List files in the user's directory
 			if (error) {
 				throw error;
 			}
@@ -125,7 +131,6 @@ function MainContent({ selectedItem }) {
 		}
 	};
 
-	// Handle file deletion
 	const handleDeleteFile = async (fileName) => {
 		setError("");
 		try {
@@ -134,9 +139,10 @@ function MainContent({ selectedItem }) {
 				throw new Error("User not authenticated");
 			}
 
+			const filePath = `${user.user.id}/${fileName}`; // Construct the file path
 			const { error } = await supabase.storage
 				.from("Files") // Replace with your bucket name
-				.remove([`${user.id}/${fileName}`]); // Delete the file
+				.remove([filePath]); // Delete the file
 
 			if (error) {
 				throw error;
@@ -160,9 +166,10 @@ function MainContent({ selectedItem }) {
 				throw new Error("User not authenticated");
 			}
 
+			const filePath = `${user.user.id}/${fileName}`; // Construct the file path
 			const { data, error } = await supabase.storage
 				.from("Files") // Replace with your bucket name
-				.download(`${user.id}/${fileName}`); // Download the file
+				.download(filePath); // Download the file
 
 			if (error) {
 				throw error;
