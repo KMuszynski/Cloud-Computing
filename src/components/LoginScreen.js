@@ -1,15 +1,58 @@
 import React, { useState } from "react";
+import { supabase } from "../utils/supabase.js";
 
 function LoginScreen({ onLogin }) {
 	const [email, setEmail] = useState("");
 	const [password, setPassword] = useState("");
 	const [repeatPassword, setRepeatPassword] = useState("");
-	const [name, setName] = useState("");
 	const [isRegistering, setIsRegistering] = useState(false);
+	const [errorMessage, setErrorMessage] = useState("");
+	const [loading, setLoading] = useState(false);
 
-	const handleLoginClick = (e) => {
+	const handleLoginClick = async (e) => {
 		e.preventDefault();
-		onLogin(); // Call the onLogin prop function to navigate to MainContent
+		setErrorMessage("");
+		setLoading(true);
+
+		try {
+			if (isRegistering) {
+				// Registration logic
+				if (password !== repeatPassword) {
+					setErrorMessage("Passwords do not match");
+					setLoading(false);
+					return;
+				}
+				const { error } = await supabase.auth.signUp({
+					email,
+					password,
+				});
+
+				if (error) {
+					setErrorMessage(error.message);
+				} else {
+					alert("Registration successful! Please check your email to verify.");
+					setIsRegistering(false);
+				}
+			} else {
+				// Login logic
+				const { error } = await supabase.auth.signInWithPassword({
+					email,
+					password,
+				});
+
+				if (error) {
+					setErrorMessage(error.message);
+				} else {
+					alert(`Welcome back!`);
+					onLogin();
+				}
+			}
+		} catch (error) {
+			console.error("Error during login/registration:", error);
+			setErrorMessage("An unexpected error occurred");
+		} finally {
+			setLoading(false);
+		}
 	};
 
 	return (
@@ -19,24 +62,6 @@ function LoginScreen({ onLogin }) {
 			</h2>
 			<div className="flex w-2/4">
 				<form className="bg-white p-6 rounded shadow w-full flex flex-col">
-					{isRegistering && (
-						<div className="mb-4">
-							<label
-								className="block text-sm font-semibold mb-2"
-								htmlFor="name"
-							>
-								Name
-							</label>
-							<input
-								type="text"
-								id="name"
-								value={name}
-								onChange={(e) => setName(e.target.value)}
-								className="w-full p-2 border rounded"
-								placeholder="Enter your name"
-							/>
-						</div>
-					)}
 					<div className="mb-4">
 						<label className="block text-sm font-semibold mb-2" htmlFor="email">
 							Email
@@ -84,12 +109,16 @@ function LoginScreen({ onLogin }) {
 							/>
 						</div>
 					)}
+					{errorMessage && (
+						<div className="mb-4 text-red-500 text-sm">{errorMessage}</div>
+					)}
 					<button
 						type="submit"
-						className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600"
+						className="w-full bg-blue-500 text-white p-2 rounded hover:bg-blue-600 disabled:opacity-50"
 						onClick={handleLoginClick}
+						disabled={loading}
 					>
-						{isRegistering ? "Register" : "Log In"}
+						{loading ? "Loading..." : isRegistering ? "Register" : "Log In"}
 					</button>
 				</form>
 				<div className="flex items-center justify-center ml-4">

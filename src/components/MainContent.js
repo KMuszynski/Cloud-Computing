@@ -1,213 +1,187 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
+import { supabase } from "../utils/supabase.js"; // Adjust the path to your Supabase client
 
 function MainContent({ selectedItem }) {
-  const [files, setFiles] = useState([]);
-  const [logs, setLogs] = useState([]);
-  const userId = localStorage.getItem('user_id');
+	const [files, setFiles] = useState([]); // User's uploaded files
+	const [logs, setLogs] = useState([]); // Action logs
+	const [loading, setLoading] = useState(false); // Loading state
+	const [error, setError] = useState(""); // Error state
 
-  useEffect(() => {
-    if (selectedItem === 'All files') {
-      fetchFiles();
-    } else if (selectedItem === 'Logs') {
-      fetchLogs();  // Fetch logs when 'Logs' is selected
-    }
-  }, [selectedItem]);
+	// Fetch user's files when the component mounts or when "All files" is selected
+	useEffect(() => {
+		if (selectedItem === "All files") {
+			fetchUserFiles();
+		}
+	}, [selectedItem]);
 
-  // Fetch files from the backend
-  const fetchFiles = async () => {
-    try {
-      if (!userId) {
-        console.error('User ID is not found');
-        return;
-      }
+	// Fetch user's uploaded files from Supabase storage
+	const fetchUserFiles = async () => {
+		setLoading(true);
+		setError("");
+		try {
+			const { data: user } = await supabase.auth.getUser();
+			if (!user) {
+				throw new Error("User not authenticated");
+			}
 
-      const response = await fetch('http://localhost:5001/get_files', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'user_id': userId, // Pass the correct user ID
-        },
-      });
+			// List files in the user's folder
+			const { data, error } = await supabase.storage
+				.from("Files") // Replace with your bucket name
+				.list(user.id, { limit: 100 }); // List files in the user's directory
 
-      const filesData = await response.json();
+			if (error) {
+				throw error;
+			}
 
-      if (response.ok) {
-        setFiles(filesData);  // Set the files data to state
-      } else {
-        console.error('Failed to fetch files', filesData);
-      }
-    } catch (error) {
-      console.error('Error fetching files:', error);
-    }
-  };
+			setFiles(data || []);
+		} catch (err) {
+			setError(err.message || "Failed to fetch files.");
+		} finally {
+			setLoading(false);
+		}
+	};
 
-  // Fetch logs from the backend
-  const fetchLogs = async () => {
-    try {
-      if (!userId) {
-        console.error('User ID is not found');
-        return;
-      }
+	// Render different content based on selected item
+	const renderContent = () => {
+		switch (selectedItem) {
+			case "All files":
+				return (
+					<div className="flex-1 p-4 bg-white">
+						<h2 className="text-lg font-semibold mb-4">All Files</h2>
+						{loading && <p>Loading files...</p>}
+						{error && <p className="text-red-500">{error}</p>}
+						{!loading && files.length === 0 && !error && (
+							<p>No files uploaded yet.</p>
+						)}
+						<div className="grid grid-cols-4 gap-4">
+							{files.map((file) => (
+								<div
+									key={file.id}
+									className="flex flex-col items-center justify-center h-24 border rounded-md cursor-pointer hover:bg-gray-100"
+								>
+									<span>📄 {file.name}</span>
+									<div className="mt-2 flex space-x-2">
+										{/* Delete button */}
+										<button
+											className="px-2 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600"
+											onClick={() => handleDeleteFile(file.name)}
+										>
+											Delete
+										</button>
 
-      const response = await fetch('http://localhost:5001/get_logs', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'user_id': userId, // Pass the correct user ID
-        },
-      });
+										{/* Download button */}
+										<button
+											className="px-2 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
+											onClick={() => handleDownloadFile(file.name)}
+										>
+											Download
+										</button>
+									</div>
+								</div>
+							))}
+						</div>
+					</div>
+				);
+			case "Logs":
+				return (
+					<div className="flex-1 p-4 bg-white">
+						<h2 className="text-lg font-semibold mb-4">Logs</h2>
+						<div className="grid grid-cols-1 gap-4">
+							{logs.length === 0 ? (
+								<div>No logs available</div>
+							) : (
+								logs.map((log) => (
+									<div
+										key={log.id}
+										className="flex flex-col items-start p-4 border rounded-md"
+									>
+										<div>
+											<strong>Action:</strong> {log.action}
+										</div>
+										<div>
+											<strong>Timestamp:</strong>{" "}
+											{new Date(log.timestamp).toLocaleString()}
+										</div>
+										<div>
+											<strong>Username:</strong> {log.username}
+										</div>
+										<div>
+											<strong>Email:</strong> {log.email}
+										</div>
+										{log.file_id && (
+											<div>
+												<strong>File ID:</strong> {log.file_id}
+											</div>
+										)}
+									</div>
+								))
+							)}
+						</div>
+					</div>
+				);
+			// Add other cases for "Shared with me", "Starred", and "Trash"
+			default:
+				return null;
+		}
+	};
 
-      const logsData = await response.json();
+	// Handle file deletion
+	const handleDeleteFile = async (fileName) => {
+		setError("");
+		try {
+			const { data: user } = await supabase.auth.getUser();
+			if (!user) {
+				throw new Error("User not authenticated");
+			}
 
-      if (response.ok) {
-        setLogs(logsData);  // Set the logs data to state
-      } else {
-        console.error('Failed to fetch logs', logsData);
-      }
-    } catch (error) {
-      console.error('Error fetching logs:', error);
-    }
-  };
+			const { error } = await supabase.storage
+				.from("Files") // Replace with your bucket name
+				.remove([`${user.id}/${fileName}`]); // Delete the file
 
-  // Handle file delete
-  const handleDelete = async (fileId) => {
-    if (!userId) {
-      console.error('User ID is not found');
-      return;
-    }
+			if (error) {
+				throw error;
+			}
 
-    try {
-      const response = await fetch(`http://localhost:5001/delete_file/${fileId}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'user_id': userId, // Pass the correct user ID
-        },
-      });
+			// Refresh file list after deletion
+			setFiles((prevFiles) =>
+				prevFiles.filter((file) => file.name !== fileName)
+			);
+		} catch (err) {
+			setError(err.message || "Failed to delete the file.");
+		}
+	};
 
-      if (response.ok) {
-        console.log(`File with ID ${fileId} deleted successfully`);
-        fetchFiles(); // Refresh the file list after deletion
-      } else {
-        const errorData = await response.json();
-        console.error('Failed to delete file', errorData);
-        fetchFiles();
-      }
-    } catch (error) {
-      console.error('Error deleting file:', error);
-    }
-  };
+	// Handle file download
+	const handleDownloadFile = async (fileName) => {
+		setError("");
+		try {
+			const { data: user } = await supabase.auth.getUser();
+			if (!user) {
+				throw new Error("User not authenticated");
+			}
 
-  // Handle file download
-  const handleDownload = (fileId) => {
-    const userId = localStorage.getItem('user_id');
-    const url = `http://localhost:5001/download_file/${fileId}`;
+			const { data, error } = await supabase.storage
+				.from("Files") // Replace with your bucket name
+				.download(`${user.id}/${fileName}`); // Download the file
 
-    fetch(url, {
-      method: 'GET',
-      headers: {
-        'user_id': userId,  // Pass the correct user ID
-      },
-    })
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error('File download failed');
-        }
+			if (error) {
+				throw error;
+			}
 
-        // Get the filename from the custom header 'X-File-Name'
-        const filename = response.headers.get('X-File-Name') || 'download';  // Default to 'download' if not found
+			// Create a URL for the file and download it
+			const url = URL.createObjectURL(data);
+			const link = document.createElement("a");
+			link.href = url;
+			link.setAttribute("download", fileName);
+			document.body.appendChild(link);
+			link.click();
+			link.remove();
+		} catch (err) {
+			setError(err.message || "Failed to download the file.");
+		}
+	};
 
-        // Create a Blob from the response
-        return response.blob().then((blob) => ({ filename, blob }));
-      })
-      .then(({ filename, blob }) => {
-        // Create a temporary link element
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob); // Create an object URL for the Blob
-        link.download = filename;  // Use extracted filename
-        link.click(); // Trigger the download
-      })
-      .catch((error) => {
-        console.error('Error downloading file:', error);
-      });
-  };
-
-  const renderContent = () => {
-    switch (selectedItem) {
-      case 'All files':
-        return (
-          <div className="flex-1 p-4 bg-white">
-            <h2 className="text-lg font-semibold mb-4">All Files</h2>
-            <div className="grid grid-cols-4 gap-4">
-              {files.length === 0 ? (
-                <div>No files available</div>
-              ) : (
-                files.map((file) => (
-                  <div key={file.id} className="flex flex-col items-center justify-center h-24 border rounded-md cursor-pointer hover:bg-gray-100">
-                    <span>📄 {file.filename}</span>
-                    <div className="mt-2 flex space-x-2">
-                      {/* Delete button */}
-                      <button
-                        onClick={() => handleDelete(file.id)}
-                        className="px-2 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600"
-                      >
-                        Delete
-                      </button>
-
-                      {/* Download button */}
-                      <button
-                        onClick={() => handleDownload(file.id)}
-                        className="px-2 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600"
-                      >
-                        Download
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        );
-      case 'Logs':
-        return (
-          <div className="flex-1 p-4 bg-white">
-            <h2 className="text-lg font-semibold mb-4">Logs</h2>
-            <div className="grid grid-cols-1 gap-4">
-              {logs.length === 0 ? (
-                <div>No logs available</div>
-              ) : (
-                logs.slice()  // Make a copy of the logs array to avoid mutating the original
-  .reverse() // Reverse the order of the logs array
-  .map((log) => (
-    <div key={log.id} className="flex flex-col items-start p-4 border rounded-md">
-      <div><strong>Action:</strong> {log.action}</div>
-      <div><strong>Timestamp:</strong> {new Date(log.timestamp).toLocaleString()}</div>
-      <div><strong>User ID:</strong> {log.user_id}</div>
-      <div><strong>Username:</strong> {log.username}</div> {/* Display username */}
-      <div><strong>Email:</strong> {log.email}</div>         {/* Display email */}
-      {log.file_id && <div><strong>File ID:</strong> {log.file_id}</div>}
-      {log.file_size && <div><strong>File Size:</strong> {log.file_size} bytes</div>}
-      {log.file_version && <div><strong>File Version:</strong> {log.file_version}</div>} {/* Display file version if available */}
-      {log.file_size && <div><strong>File Size:</strong> {log.file_size} bytes</div>} {/* Display file size if available */}
-    </div>
-  ))
-             
-              )}
-            </div>
-          </div>
-        );
-      case 'Shared with me':
-        return <div className="flex-1 p-4 bg-white"><h2 className="text-lg font-semibold mb-4">Shared with me</h2></div>;
-      case 'Starred':
-        return <div className="flex-1 p-4 bg-white"><h2 className="text-lg font-semibold mb-4">Starred</h2></div>;
-      case 'Trash':
-        return <div className="flex-1 p-4 bg-white"><h2 className="text-lg font-semibold mb-4">Trash</h2></div>;
-      default:
-        return null;
-    }
-  };
-
-  return renderContent();
+	return renderContent();
 }
 
 export default MainContent;
