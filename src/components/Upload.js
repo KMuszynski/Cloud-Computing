@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase.js"; // Adjust path to your Supabase client
+import { v4 as uuidv4 } from "uuid";
 
 function Upload() {
 	const [dragging, setDragging] = useState(false); // Track dragging state
@@ -15,7 +16,7 @@ function Upload() {
 				console.error("Error fetching user:", error.message);
 				setUploadStatus("Error fetching user details.");
 			} else {
-				setUserId(data?.id || ""); // Get the user ID
+				setUserId(data?.user.id || ""); // Get the user ID
 			}
 		};
 
@@ -83,10 +84,7 @@ function Upload() {
 			const uploadPromises = files.map(async (file) => {
 				const { data, error } = await supabase.storage
 					.from("Files") // Replace with your storage bucket name
-					.upload(`${user.id}/${file.name}`, file, {
-						cacheControl: "3600", // Optional: Cache control
-						upsert: false, // Prevent overwriting files
-					});
+					.upload(userId + "/" + uuidv4(), file);
 
 				if (error) {
 					throw new Error(`Failed to upload ${file.name}: ${error.message}`);
