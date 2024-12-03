@@ -21,8 +21,37 @@ function Options({ onLogout }) {
 		fetchUserDetails();
 	}, []);
 
+	// Function to log actions to Supabase
+	const logAction = async (action, email, userId) => {
+		try {
+			const { error } = await supabase.from("logs").insert([
+				{
+					action,
+					email,
+					user_id: userId,
+				},
+			]);
+
+			if (error) {
+				console.error("Error logging action:", error.message);
+			}
+		} catch (err) {
+			console.error("Error logging action:", err.message);
+		}
+	};
+
 	// Handle Logout
 	const handleLogout = async () => {
+		const {
+			data: { session },
+		} = await supabase.auth.getSession();
+		const user = session?.user;
+
+		if (user) {
+			// Log logout action
+			logAction("logout", user.email, user.id);
+		}
+
 		const { error } = await supabase.auth.signOut();
 		if (error) {
 			console.error("Error logging out:", error.message);

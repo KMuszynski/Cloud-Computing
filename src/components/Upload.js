@@ -3,150 +3,178 @@ import { supabase } from "../utils/supabase.js"; // Adjust path to your Supabase
 import { v4 as uuidv4 } from "uuid";
 
 function Upload() {
-	const [dragging, setDragging] = useState(false); // Track dragging state
-	const [files, setFiles] = useState([]); // Store selected files
-	const [uploadStatus, setUploadStatus] = useState(""); // Track upload status
-	const [userId, setUserId] = useState(""); // Store the user's ID
+  const [dragging, setDragging] = useState(false); // Track dragging state
+  const [files, setFiles] = useState([]); // Store selected files
+  const [uploadStatus, setUploadStatus] = useState(""); // Track upload status
+  const [userId, setUserId] = useState(""); // Store the user's ID
 
-	// Fetch the logged-in user's ID
-	React.useEffect(() => {
-		const fetchUser = async () => {
-			const { data, error } = await supabase.auth.getUser();
-			if (error) {
-				console.error("Error fetching user:", error.message);
-				setUploadStatus("Error fetching user details.");
-			} else {
-				setUserId(data?.user.id || ""); // Get the user ID
-			}
-		};
+  // Fetch the logged-in user's ID
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data, error } = await supabase.auth.getUser();
+      if (error) {
+        console.error("Error fetching user:", error.message);
+        setUploadStatus("Error fetching user details.");
+      } else {
+        setUserId(data?.user.id || ""); // Get the user ID
+      }
+    };
 
-		fetchUser();
-	}, []);
+    fetchUser();
+  }, []);
 
-	// Handle when files are dragged over the drop zone
-	const handleDragOver = (event) => {
-		event.preventDefault(); // Prevent default behavior
-		setDragging(true); // Set dragging state to true
-	};
+  // Log file upload action
+  const logFileUpload = async (fileName, fileId, fileSize) => {
+    const { data: user } = await supabase.auth.getUser();
+    if (!user) return;
 
-	// Handle when files are dragged away from the drop zone
-	const handleDragLeave = () => {
-		setDragging(false); // Reset dragging state
-	};
+    const { error } = await supabase.from("logs").insert([
+      {
+        action: "upload",
+        email: user.user.email,
+        user_id: user.user.id,
+        file_id: fileId,
+        file_name: fileName,
+        file_size: fileSize, // Log file size
+        timestamp: new Date().toISOString(),
+      },
+    ]);
+    if (error) {
+      console.error("Error logging file upload action:", error.message);
+    }
+  };
 
-	// Handle when files are dropped
-	const handleDrop = (event) => {
-		event.preventDefault(); // Prevent default behavior
-		setDragging(false); // Reset dragging state
+  // Handle when files are dragged over the drop zone
+  const handleDragOver = (event) => {
+    event.preventDefault(); // Prevent default behavior
+    setDragging(true); // Set dragging state to true
+  };
 
-		const droppedFiles = Array.from(event.dataTransfer.files); // Get dropped files
+  // Handle when files are dragged away from the drop zone
+  const handleDragLeave = () => {
+    setDragging(false); // Reset dragging state
+  };
 
-		// Update files state, ensuring no duplicates
-		setFiles((prevFiles) => [
-			...prevFiles,
-			...droppedFiles.filter(
-				(file) => !prevFiles.some((prevFile) => prevFile.name === file.name)
-			),
-		]);
-	};
+  // Handle when files are dropped
+  const handleDrop = (event) => {
+    event.preventDefault(); // Prevent default behavior
+    setDragging(false); // Reset dragging state
 
-	// Handle file selection through the file input
-	const handleFileChange = (event) => {
-		const selectedFiles = Array.from(event.target.files); // Get selected files
+    const droppedFiles = Array.from(event.dataTransfer.files); // Get dropped files
 
-		// Update files state, ensuring no duplicates
-		setFiles((prevFiles) => [
-			...prevFiles,
-			...selectedFiles.filter(
-				(file) => !prevFiles.some((prevFile) => prevFile.name === file.name)
-			),
-		]);
-	};
+    // Update files state, ensuring no duplicates
+    setFiles((prevFiles) => [
+      ...prevFiles,
+      ...droppedFiles.filter(
+        (file) => !prevFiles.some((prevFile) => prevFile.name === file.name)
+      ),
+    ]);
+  };
 
-	// Handle file upload to Supabase
-	const handleUpload = async () => {
-		if (files.length === 0) {
-			setUploadStatus("No files to upload.");
-			return;
+  // Handle file selection through the file input
+  const handleFileChange = (event) => {
+    const selectedFiles = Array.from(event.target.files); // Get selected files
+
+    // Update files state, ensuring no duplicates
+    setFiles((prevFiles) => [
+      ...prevFiles,
+      ...selectedFiles.filter(
+        (file) => !prevFiles.some((prevFile) => prevFile.name === file.name)
+      ),
+    ]);
+  };
+
+  // Handle file upload to Supabase
+  const handleUpload = async () => {
+	if (files.length === 0) {
+	  setUploadStatus("No files to upload.");
+	  return;
+	}
+  
+	// Ensure the user is authenticated
+	const { data: user, error } = await supabase.auth.getUser();
+	if (error || !user) {
+	  setUploadStatus("User not authenticated.");
+	  return;
+	}
+  
+	setUploadStatus("Uploading...");
+  
+	try {
+	  const uploadPromises = files.map(async (file) => {
+		const fileId = uuidv4(); // Generate a unique file ID
+		
+		// Use the original file name instead of a generated ID for storage
+		const { data, error } = await supabase.storage
+		  .from("Files") // Replace with your storage bucket name
+		  .upload(`${userId}/${file.name}`, file); // Use the original file name
+  
+		if (error) {
+		  throw new Error(`Failed to upload ${file.name}: ${error.message}`);
 		}
+  
+		// Log the upload action with the file name and size
+		await logFileUpload(file.name, fileId, file.size);
+  
+		return data;
+	  });
+  
+	  // Wait for all files to upload
+	  await Promise.all(uploadPromises);
+  
+	  setUploadStatus("Files uploaded successfully!");
+	  setFiles([]); // Clear files after successful upload
+	} catch (error) {
+	  setUploadStatus(`Upload failed: ${error.message}`);
+	}
+  };
+  
 
-		// Ensure the user is authenticated
-		const { data: user, error } = await supabase.auth.getUser();
-		if (error || !user) {
-			setUploadStatus("User not authenticated.");
-			return;
-		}
-
-		setUserId(user.id); // Ensure user ID is available
-		setUploadStatus("Uploading...");
-
-		try {
-			const uploadPromises = files.map(async (file) => {
-				const { data, error } = await supabase.storage
-					.from("Files") // Replace with your storage bucket name
-					.upload(userId + "/" + uuidv4(), file);
-
-				if (error) {
-					throw new Error(`Failed to upload ${file.name}: ${error.message}`);
-				}
-				return data;
-			});
-
-			// Wait for all files to upload
-			await Promise.all(uploadPromises);
-
-			setUploadStatus("Files uploaded successfully!");
-			setFiles([]); // Clear files after successful upload
-		} catch (error) {
-			setUploadStatus(`Upload failed: ${error.message}`);
-		}
-	};
-
-	return (
-		<div className="flex flex-col items-center justify-center w-full h-full bg-gray-100">
-			<h2 className="text-2xl font-bold mb-4">Upload Files</h2>
-			<div
-				onDragOver={handleDragOver} // Handle drag over event
-				onDragLeave={handleDragLeave} // Handle drag leave event
-				onDrop={handleDrop} // Handle drop event
-				className={`border-dashed border-4 p-10 rounded-md ${
-					dragging ? "border-blue-500" : "border-gray-400"
-				}`}
-			>
-				<p className="text-lg">Drag and drop your files here</p>
-				<p className="text-gray-500">or</p>
-				<input
-					type="file"
-					multiple
-					onChange={handleFileChange} // Handle file selection
-					className="hidden"
-					id="file-upload"
-				/>
-				<label htmlFor="file-upload" className="cursor-pointer text-blue-500">
-					Browse Files
-				</label>
-			</div>
-			{files.length > 0 && (
-				<div className="mt-4">
-					<h3 className="font-semibold">Selected Files:</h3>
-					<ul>
-						{files.map((file, index) => (
-							<li key={index} className="text-sm">
-								{file.name}
-							</li>
-						))}
-					</ul>
-				</div>
-			)}
-			<button
-				onClick={handleUpload}
-				className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-			>
-				Upload Files
-			</button>
-			{uploadStatus && <p className="mt-2 text-sm">{uploadStatus}</p>}
-		</div>
-	);
+  return (
+    <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100">
+      <h2 className="text-2xl font-bold mb-4">Upload Files</h2>
+      <div
+        onDragOver={handleDragOver} // Handle drag over event
+        onDragLeave={handleDragLeave} // Handle drag leave event
+        onDrop={handleDrop} // Handle drop event
+        className={`border-dashed border-4 p-10 rounded-md ${
+          dragging ? "border-blue-500" : "border-gray-400"
+        }`}
+      >
+        <p className="text-lg">Drag and drop your files here</p>
+        <p className="text-gray-500">or</p>
+        <input
+          type="file"
+          multiple
+          onChange={handleFileChange} // Handle file selection
+          className="hidden"
+          id="file-upload"
+        />
+        <label htmlFor="file-upload" className="cursor-pointer text-blue-500">
+          Browse Files
+        </label>
+      </div>
+      {files.length > 0 && (
+        <div className="mt-4">
+          <h3 className="font-semibold">Selected Files:</h3>
+          <ul>
+            {files.map((file, index) => (
+              <li key={index} className="text-sm">
+                {file.name} ({(file.size / 1024).toFixed(2)} KB)
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <button
+        onClick={handleUpload}
+        className="mt-4 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
+      >
+        Upload Files
+      </button>
+      {uploadStatus && <p className="mt-2 text-sm">{uploadStatus}</p>}
+    </div>
+  );
 }
 
 export default Upload;
