@@ -1,12 +1,37 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "../utils/supabase.js"; // Adjust path to your Supabase client
 import { v4 as uuidv4 } from "uuid";
+import JSZip from "jszip"; // Add this library for handling zip files
+
+// List of forbidden file extensions
+const restrictedExtensions = [
+  ".exe", ".bat", ".sh", ".msi", ".cmd", ".app", ".js", ".vbs", ".php", 
+  ".pl", ".cgi", ".dll", ".scr", ".wsf", ".jar", ".apk", ".iso"
+];
+
+// Function to check if a file is restricted based on its extension
+const isRestrictedFile = (fileName) => {
+  const fileExtension = fileName.slice(((fileName.lastIndexOf(".") - 1) >>> 0) + 2).toLowerCase();
+  return restrictedExtensions.includes(`.${fileExtension}`);
+};
+
+// Function to validate zip files (check if they contain restricted file types)
+const validateZipFiles = async (file) => {
+  const zip = await JSZip.loadAsync(file);
+  const filesInZip = Object.keys(zip.files);
+  for (let fileName of filesInZip) {
+    if (isRestrictedFile(fileName)) {
+      return false; // Found a restricted file inside the zip
+    }
+  }
+  return true; // No restricted files found in the zip
+};
 
 function Upload() {
-  const [dragging, setDragging] = useState(false); // Track dragging state
-  const [files, setFiles] = useState([]); // Store selected files
-  const [uploadStatus, setUploadStatus] = useState(""); // Track upload status
-  const [userId, setUserId] = useState(""); // Store the user's ID
+  const [dragging, setDragging] = useState(false);
+  const [files, setFiles] = useState([]);
+  const [uploadStatus, setUploadStatus] = useState("");
+  const [userId, setUserId] = useState("");
 
   // Fetch the logged-in user's ID
   useEffect(() => {
@@ -16,7 +41,7 @@ function Upload() {
         console.error("Error fetching user:", error.message);
         setUploadStatus("Error fetching user details.");
       } else {
-        setUserId(data?.user.id || ""); // Get the user ID
+        setUserId(data?.user.id || "");
       }
     };
 
@@ -35,7 +60,7 @@ function Upload() {
         user_id: user.user.id,
         file_id: fileId,
         file_name: fileName,
-        file_size: fileSize, // Log file size
+        file_size: fileSize,
         timestamp: new Date().toISOString(),
       },
     ]);
@@ -46,97 +71,97 @@ function Upload() {
 
   // Handle when files are dragged over the drop zone
   const handleDragOver = (event) => {
-    event.preventDefault(); // Prevent default behavior
-    setDragging(true); // Set dragging state to true
+    event.preventDefault();
+    setDragging(true);
   };
 
   // Handle when files are dragged away from the drop zone
   const handleDragLeave = () => {
-    setDragging(false); // Reset dragging state
+    setDragging(false);
   };
 
   // Handle when files are dropped
   const handleDrop = (event) => {
-    event.preventDefault(); // Prevent default behavior
-    setDragging(false); // Reset dragging state
+    event.preventDefault();
+    setDragging(false);
 
-    const droppedFiles = Array.from(event.dataTransfer.files); // Get dropped files
-
-    // Update files state, ensuring no duplicates
+    const droppedFiles = Array.from(event.dataTransfer.files);
     setFiles((prevFiles) => [
       ...prevFiles,
-      ...droppedFiles.filter(
-        (file) => !prevFiles.some((prevFile) => prevFile.name === file.name)
-      ),
+      ...droppedFiles.filter((file) => !prevFiles.some((prevFile) => prevFile.name === file.name)),
     ]);
   };
 
   // Handle file selection through the file input
   const handleFileChange = (event) => {
-    const selectedFiles = Array.from(event.target.files); // Get selected files
-
-    // Update files state, ensuring no duplicates
+    const selectedFiles = Array.from(event.target.files);
     setFiles((prevFiles) => [
       ...prevFiles,
-      ...selectedFiles.filter(
-        (file) => !prevFiles.some((prevFile) => prevFile.name === file.name)
-      ),
+      ...selectedFiles.filter((file) => !prevFiles.some((prevFile) => prevFile.name === file.name)),
     ]);
   };
 
   // Handle file upload to Supabase
   const handleUpload = async () => {
-	if (files.length === 0) {
-	  setUploadStatus("No files to upload.");
-	  return;
-	}
-  
-	// Ensure the user is authenticated
-	const { data: user, error } = await supabase.auth.getUser();
-	if (error || !user) {
-	  setUploadStatus("User not authenticated.");
-	  return;
-	}
-  
-	setUploadStatus("Uploading...");
-  
-	try {
-	  const uploadPromises = files.map(async (file) => {
-		const fileId = uuidv4(); // Generate a unique file ID
-		
-		// Use the original file name instead of a generated ID for storage
-		const { data, error } = await supabase.storage
-		  .from("Files") // Replace with your storage bucket name
-		  .upload(`${userId}/${file.name}`, file); // Use the original file name
-  
-		if (error) {
-		  throw new Error(`Failed to upload ${file.name}: ${error.message}`);
-		}
-  
-		// Log the upload action with the file name and size
-		await logFileUpload(file.name, fileId, file.size);
-  
-		return data;
-	  });
-  
-	  // Wait for all files to upload
-	  await Promise.all(uploadPromises);
-  
-	  setUploadStatus("Files uploaded successfully!");
-	  setFiles([]); // Clear files after successful upload
-	} catch (error) {
-	  setUploadStatus(`Upload failed: ${error.message}`);
-	}
+    if (files.length === 0) {
+      setUploadStatus("No files to upload.");
+      return;
+    }
+
+    // Ensure the user is authenticated
+    const { data: user, error } = await supabase.auth.getUser();
+    if (error || !user) {
+      setUploadStatus("User not authenticated.");
+      return;
+    }
+
+    setUploadStatus("Uploading...");
+
+    try {
+      const uploadPromises = files.map(async (file) => {
+        // Check if the file or zip contains restricted file types
+        if (isRestrictedFile(file.name)) {
+          throw new Error(`File type not allowed: ${file.name}`);
+        }
+
+        // If the file is a zip, check its contents
+        if (file.name.endsWith(".zip")) {
+          const isValid = await validateZipFiles(file);
+          if (!isValid) {
+            throw new Error(`The zip file contains a restricted file.`);
+          }
+        }
+
+        const fileId = uuidv4();
+        const { data, error } = await supabase.storage
+          .from("Files")
+          .upload(`${userId}/${file.name}`, file);
+
+        if (error) {
+          throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+        }
+
+        await logFileUpload(file.name, fileId, file.size);
+
+        return data;
+      });
+
+      await Promise.all(uploadPromises);
+
+      setUploadStatus("Files uploaded successfully!");
+      setFiles([]);
+    } catch (error) {
+      setUploadStatus(`Upload failed: ${error.message}`);
+    }
   };
-  
 
   return (
     <div className="flex flex-col items-center justify-center w-full h-full bg-gray-100">
       <h2 className="text-2xl font-bold mb-4">Upload Files</h2>
       <div
-        onDragOver={handleDragOver} // Handle drag over event
-        onDragLeave={handleDragLeave} // Handle drag leave event
-        onDrop={handleDrop} // Handle drop event
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
         className={`border-dashed border-4 p-10 rounded-md ${
           dragging ? "border-blue-500" : "border-gray-400"
         }`}
@@ -146,7 +171,7 @@ function Upload() {
         <input
           type="file"
           multiple
-          onChange={handleFileChange} // Handle file selection
+          onChange={handleFileChange}
           className="hidden"
           id="file-upload"
         />
