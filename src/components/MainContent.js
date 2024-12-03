@@ -53,6 +53,7 @@ function MainContent({ selectedItem }) {
 			case "All files":
 				return (
 					<div className="flex-1 p-4 bg-white">
+						<h1>To jest test</h1>
 						<h2 className="text-lg font-semibold mb-4">All Files</h2>
 						{loading && <p>Loading files...</p>}
 						{error && <p className="text-red-500">{error}</p>}

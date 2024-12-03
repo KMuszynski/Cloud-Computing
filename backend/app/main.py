@@ -202,6 +202,7 @@ def update_profile():
 
 # Route to add a new user to the database
 @app.route('/add_user', methods=['POST'])
+@cross_origin(origins=["http://localhost:3000", "http://localhost:5000", "http://localhost:5001"])
 def add_user():
     # Get the data from the request
     data = request.get_json()
